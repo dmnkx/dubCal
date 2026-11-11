@@ -741,8 +741,17 @@ impl Calendar {
                                             (&mut editor.draft.end_date, &mut editor.draft.end_time)
                                         };
                                         column.push_id(index, |ui| {
+                                            ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
+                                            ui.label(
+                                                RichText::new("날짜").small().color(palette.muted),
+                                            );
                                             editor.dates[index].show(ui, date);
                                             ui.add_enabled_ui(!editor.draft.all_day, |ui| {
+                                                ui.label(
+                                                    RichText::new("시간")
+                                                        .small()
+                                                        .color(palette.muted),
+                                                );
                                                 editor.times[index].show(ui, time);
                                             });
                                         });

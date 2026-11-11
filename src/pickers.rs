@@ -138,6 +138,7 @@ impl TimePicker {
             |ui| {
                 ui.set_min_width(220.0);
                 ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
+                ui.spacing_mut().button_padding = egui::vec2(8.0, 5.0);
                 egui::Frame::new().inner_margin(10).show(ui, |ui| {
                     ui.strong("시간 선택");
                     ui.columns(2, |columns| {
@@ -191,16 +192,26 @@ impl TimePicker {
 }
 
 fn field(ui: &mut egui::Ui, value: &mut String, hint: &str, id: egui::Id) -> egui::Response {
-    let width = (ui.available_width() - ui.spacing().item_spacing.x - 44.0).max(80.0);
+    // Widths include the controls' padding. Don't inherit the editor's larger
+    // button padding: it makes a 44px selector expand beyond its column.
+    const BUTTON_WIDTH: f32 = 52.0;
+    const GAP: f32 = 6.0;
+    let width = (ui.available_width() - GAP - BUTTON_WIDTH).max(1.0);
     ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = GAP;
+        ui.spacing_mut().button_padding = egui::vec2(6.0, 6.0);
         ui.add_sized(
             [width, 36.0],
             egui::TextEdit::singleline(value)
                 .id(id)
+                .desired_width((width - 16.0).max(1.0))
                 .hint_text(hint)
                 .margin(egui::vec2(8.0, 9.0)),
         );
-        ui.add_sized([44.0, 36.0], egui::Button::new("선택").corner_radius(6))
+        ui.add_sized(
+            [BUTTON_WIDTH, 36.0],
+            egui::Button::new("선택").corner_radius(6),
+        )
     })
     .inner
 }
@@ -227,6 +238,55 @@ fn month_grid(month: NaiveDate) -> [Option<NaiveDate>; 42] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn start_end_fields_fit_the_editor_columns_with_padded_buttons() {
+        for width in [360.0, 420.0, 460.0] {
+            let ctx = egui::Context::default();
+            let mut dates = [DatePicker::default(), DatePicker::default()];
+            let mut times = [TimePicker::default(), TimePicker::default()];
+            let mut records = Vec::new();
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(width + 16.0, 600.0),
+                    )),
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        ui.set_width(width);
+                        ui.spacing_mut().item_spacing = egui::vec2(12.0, 12.0);
+                        ui.spacing_mut().button_padding = egui::vec2(14.0, 9.0);
+                        egui::Frame::new().inner_margin(16).show(ui, |ui| {
+                            ui.columns(2, |columns| {
+                                for (index, column) in columns.iter_mut().enumerate() {
+                                    let right = column.max_rect().right();
+                                    column.push_id(index, |ui| {
+                                        let date =
+                                            dates[index].show(ui, &mut "2026-11-12".to_owned());
+                                        let time =
+                                            times[index].show(ui, &mut "09:15:34.123".to_owned());
+                                        records.push((right, date.rect, time.rect));
+                                    });
+                                }
+                            });
+                        });
+                    });
+                },
+            );
+            for (right, date, time) in records {
+                assert!(date.right() <= right + 0.5, "Date selector extends beyond its column at width {width}: {date:?}, right={right}");
+                assert!(time.right() <= right + 0.5, "Time selector extends beyond its column at width {width}: {time:?}, right={right}");
+                assert!(
+                    (date.height() - 36.0).abs() < 1.0,
+                    "Date button wraps at width {width}: {date:?}"
+                );
+                assert!(time.top() >= date.bottom(), "Date/time rows overlap");
+            }
+        }
+    }
+
     #[test]
     fn leap_february_grid_has_all_days_and_sunday_first() {
         let month = NaiveDate::from_ymd_opt(2024, 2, 1).unwrap();
